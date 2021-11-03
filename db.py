@@ -1,5 +1,7 @@
 import sqlite3
 
+import time_converter
+
 
 class DB:
     __conn = None
@@ -24,6 +26,7 @@ class DB:
         cur.execute('''
             CREATE TABLE IF NOT EXISTS phones (
             account_id INTEGER NOT NULL, 
+            email TEXT,
             date_create TEXT, 
             date_trial TEXT,
             api_id INTEGER,
@@ -39,14 +42,14 @@ class DB:
         return True
 
     # общий метод добавления участника
-    def add_member(self, account_id, date_create_unix=None, date_trial_unix=None, api_id=None,
+    def add_member(self, account_id, email=None, date_create=None, date_trial=None, api_id=None,
                    api_token=None, instance_id=None, qr_base64=None, phone=None, name=None):
 
-        query = 'INSERT INTO phones(account_id, date_create, date_trial'
-        values = [account_id, date_create_unix, date_trial_unix]
+        query = 'INSERT INTO phones(account_id, email, date_create, date_trial'
+        values = [account_id, email, date_create, date_trial]
 
         # слайсим, чтоб выдернуть только необязательные аргументы метода
-        args = list(locals().items())[4:-2]
+        args = list(locals().items())[5:-2]
 
         # бегаем по аргументам метода, формируем запрос
         for arg in args:
@@ -64,6 +67,8 @@ class DB:
         # добавляем значения в запрос
         query += f') VALUES({", ".join(values)});'
 
+        print(query)
+
         conn = self.get_conn()
         cur = conn.cursor()
 
@@ -73,18 +78,24 @@ class DB:
 
         return True
 
-    def add_chat_to_member(self, acc_id, api_id, api_token, instance_id):
+    def add_chat_to_member(self, acc_id, email, api_id, api_token, instance_id):
 
         conn = self.get_conn()
         cur = conn.cursor()
 
-        cur.execute(f"SELECT account_id FROM phones "
-                    f"WHERE ifnull(api_id, '') = '' and ifnull(api_token, '') = '' and "
-                    f"ifnull(instance_id, '') = '';")
+        cur.execute(f"SELECT account_id, api_id, date_create, date_trial FROM phones "
+                    f"WHERE account_id = {acc_id}")
 
-        empty_accs = cur.fetchall()
+        accs = cur.fetchall()
 
-        if len(empty_accs) > 0:
+        empty_acc_exist = False
+
+        for acc in accs:
+            if not acc[1]:
+                empty_acc_exist = True
+                break
+
+        if empty_acc_exist:
 
             query = f"UPDATE phones SET api_id = {api_id}, api_token = '{api_token}', " \
                     f"instance_id = '{instance_id}' WHERE account_id = {acc_id} and " \
@@ -99,7 +110,17 @@ class DB:
 
             conn.commit()
         else:
-            self.add_member(acc_id, api_id=api_id, api_token=api_token,
+
+            date_create = ''
+            date_trial = ''
+
+            for acc in accs:
+                if acc[0] == acc_id:
+                    date_create = acc[2]
+                    date_trial = acc[3]
+
+            self.add_member(acc_id, email=email, date_create=date_create,
+                            date_trial=date_trial, api_id=api_id, api_token=api_token,
                             instance_id=instance_id)
 
         return True
@@ -111,7 +132,8 @@ class DB:
         qr_base64_converted = qr_base64.split('base64,')[1]
 
         # кодируем строку в последовательность байтов
-        qr_base64_converted = qr_base64_converted.encode('utf-8')
+        # TODO поставить, если будут проблемы с сохранением
+        # qr_base64_converted = qr_base64_converted.encode('utf-8')
 
         query = f'UPDATE phones SET qr_base64 = "{qr_base64_converted}" WHERE ' \
                 f'account_id = {acc_id} and api_id = {api_id};'
@@ -154,6 +176,21 @@ class DB:
 
         return result
 
+    def get_working_acc_id_by_email(self, email):
+
+        conn = self.get_conn()
+        cur = conn.cursor()
+
+        cur.execute(f"SELECT date_trial, account_id FROM phones WHERE email = '{email}'")
+
+        acc_expiration_dates = cur.fetchall()
+
+        for expiration_date in acc_expiration_dates:
+            if not time_converter.has_passed(expiration_date[0]):
+                return expiration_date[1]
+
+        return None
+
 
 if __name__ == '__main__':
     db = DB()
@@ -167,5 +204,17 @@ if __name__ == '__main__':
     # qr = db.get_qr(22, 16)
     # print(qr)
 
-    god = db.add_chat_to_member(22, 666, 'ada', 'asda')
-    print(god)
+    # god = db.add_chat_to_member(22, 666, 'ada', 'asda')
+    # print(god)
+
+    # w_acc_id = db.get_working_acc_id()
+    # print(w_acc_id)
+
+    # email = 'temp2@gmail.com'
+    # print(db.get_working_acc_id_by_email(email))
+
+    btt = 'iVBORw0KGgoAAAANSUhEUgAAAOQAAADkCAYAAACIV4i'
+    conv = btt.encode('utf-8')
+    print(conv.decode('utf-8'))
+    print(type(conv))
+

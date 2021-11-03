@@ -20,19 +20,25 @@ class WhatsAppHelper:
     db = DB()
 
     def create_member(self, email):
-        reg_user_post = 'https://dev.whatsapp.sipteco.ru/v3/integrations/install?crm=LK'
-        content = {
-            'domain': email
-        }
 
-        req = requests.post(reg_user_post, headers=self.headers, data=json.dumps(content))
+        acc_id = self.db.get_working_acc_id_by_email(email)
 
-        member = req.json()
-        acc_id = member['id']
-        date_create = time_converter.unix_to_msc(member['date_add'])
-        date_trial = time_converter.unix_to_msc(member['date_trial'])
+        if not acc_id:
 
-        wap.db.add_member(acc_id, date_create, date_trial)
+            reg_user_post = 'https://dev.whatsapp.sipteco.ru/v3/integrations/install?crm=LK'
+            content = {
+                'domain': email
+            }
+
+            req = requests.post(reg_user_post, headers=self.headers, data=json.dumps(content))
+
+            member = req.json()
+            print(member)
+            acc_id = member['id']
+            date_create = time_converter.unix_to_msc(member['date_add'])
+            date_trial = time_converter.unix_to_msc(member['date_trial'])
+
+            self.db.add_member(acc_id, email, date_create, date_trial)
 
         return acc_id
 
@@ -48,12 +54,12 @@ class WhatsAppHelper:
         api_token = chat['token']
         instance_id = chat['instanceId']
 
-        wap.db.add_chat_to_member(acc_id, api_id, api_token, instance_id)
+        self.db.add_chat_to_member(acc_id, email, api_id, api_token, instance_id)
 
         return api_id, api_token
 
     def chat_interaction(self, api_id, api_token, method_name, method_type, content=None,
-                         what_crm_dev=True, insert_token=True):
+                         what_crm_dev=True, insert_token=True, init_status=False):
 
         # метод для работы с чатом
         # пример https://dev.whatsapp.sipteco.ru/v3/instance23/me?token=123DYUUD
@@ -64,6 +70,9 @@ class WhatsAppHelper:
 
         if insert_token:
             chat_interaction_url += f'?token={api_token}'
+
+        if init_status:
+            chat_interaction_url += '&full=1'
 
         if method_type == 'POST':
             resp = requests.post(chat_interaction_url, headers=self.headers,
@@ -91,6 +100,7 @@ class WhatsAppHelper:
         qr_path = f'qr_{api_id}.png'
 
         qr_base64 = self.db.get_qr(acc_id, api_id)
+        # переводим в байты
         qr_base64_converted = qr_base64.encode('utf-8')
 
         # пишем байты, поэтому wb
@@ -98,36 +108,38 @@ class WhatsAppHelper:
             # декодируем байты и пишем в файл
             f.write(decodebytes(qr_base64_converted))
 
-        return qr_path + ' downloaded'
+        return qr_path
 
-    def get_qr_from_status(self, api_id, api_token, what_crm_dev=True):
+    def get_qr_from_status(self, acc_id, api_id, api_token, what_crm_dev=True):
 
         # предварительно делаем ребут аккаунта
-        print(wap.chat_interaction(api_id, api_token, 'reboot', 'GET', insert_token=True))
+        print(self.chat_interaction(api_id, api_token, 'reboot', 'GET', insert_token=True))
 
         status = self.chat_interaction(api_id, api_token, 'status', 'GET',
                                        what_crm_dev=what_crm_dev)
         print(status)
 
-        # каждые 60 секунд после ребута запрашиваем статус и ждем, когда получим qr
+        # каждые 30 секунд после ребута запрашиваем статус и ждем, когда получим qr
         while not status.get('qrCode'):
-            time.sleep(60)
+            time.sleep(30)
 
-            status = wap.chat_interaction(api_id, api_token, 'status', 'GET')
+            status = self.chat_interaction(api_id, api_token, 'status', 'GET',
+                                           init_status=True)
             print(status)
 
         # сохраняем qr в бд
         self.db.save_qr(acc_id, api_id, status['qrCode'])
 
         # скачиваем qr в корень проекта
-        print(self.download_qr_code(acc_id, api_id))
+        qr_path = self.download_qr_code(acc_id, api_id)
+        print(qr_path, ' downloaded')
 
-        return True
+        return qr_path
 
     # получаем информацию о номере и имени аккаунта whatsapp
     def check_whatsapp_info(self, acc_id, api_id, api_token):
 
-        me_info = wap.chat_interaction(api_id, api_token, 'me', 'GET')
+        me_info = self.chat_interaction(api_id, api_token, 'me', 'GET')
         print(me_info)
 
         if me_info.get('name'):
@@ -166,6 +178,8 @@ class WhatsAppHelper:
 
 if __name__ == '__main__':
     wap = WhatsAppHelper()
+
+    wap.download_qr_code(39, 20)
 
     # post_res = wap.create_member(email)
     # post_res = {'id': 22, 'date_add': 1635091232, 'date_trial': 1635350432, 'is_premium': 0}
