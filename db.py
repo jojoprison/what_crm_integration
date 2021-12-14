@@ -182,6 +182,7 @@ class DB:
         cur = conn.cursor()
 
         cur.execute(f"SELECT date_trial, account_id FROM phones WHERE email = '{email}'")
+        # cur.execute("SELECT date_trial, account_id FROM phones WHERE email = ?", email)
 
         acc_expiration_dates = cur.fetchall()
 

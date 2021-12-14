@@ -5,7 +5,9 @@ wap = WhatsAppHelper()
 
 def get_main_data(email):
 
-    acc_id = wap.create_member(email)
+    print(email)
+    # acc_id = wap.create_member(email)
+    acc_id = 39
     print(acc_id)
 
     api_id, api_token = wap.get_new_chat(email, acc_id)
@@ -29,7 +31,9 @@ def start(email):
 if __name__ == '__main__':
 
     # ввести сюда email для регистрации аккаунта
-    # email = 'egyabig2@gmail.com'
     email_o = 'temp@gmail.com'
+
+    qr_path = wap.get_qr_from_status(39, 21, 'PAjaZ747B-uQHpG9')
+    print(qr_path)
 
     start(email_o)

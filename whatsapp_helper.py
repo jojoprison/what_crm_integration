@@ -30,6 +30,8 @@ class WhatsAppHelper:
                 'domain': email
             }
 
+            print(content)
+
             req = requests.post(reg_user_post, headers=self.headers, data=json.dumps(content))
 
             member = req.json()
@@ -46,10 +48,12 @@ class WhatsAppHelper:
         # метод получения нового чата
         # отсюда получаем ID, TOKEN
         get_new_chat_url = f'{self.task_api_url}chat/spare?crm=LK&domain={email}'
+        print(email)
 
         req = requests.get(get_new_chat_url, headers=self.headers)
 
         chat = req.json()
+        print(chat)
         api_id = chat['id']
         api_token = chat['token']
         instance_id = chat['instanceId']
